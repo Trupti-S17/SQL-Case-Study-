@@ -1,0 +1,116 @@
+-- 1. What is the total amount each customer spent at the restaurant?
+
+Select customer_id, sum(price) as Total_amount
+from dannys_diner.sales s
+join dannys_diner.menu m
+on s.product_id = m.product_id
+group by customer_id
+order by customer_id;
+
+-- 2. How many days has each customer visited the restaurant?
+Select customer_id, count(order_date) as Visit_count
+from dannys_diner.sales
+group by customer_id 
+
+-- 3. What was the first item from the menu purchased by each customer?
+with first_order as
+( select s.customer_id,s.product_id, m.product_name ,
+ rank() over(partition by s.product_id order by order_date asc) as ranks
+from dannys_diner.sales s
+left join dannys_diner.menu m
+ on s.product_id = m.product_id
+ )
+Select distinct customer_id, product_id,product_name
+from first_order
+where ranks =1 
+group by 1,2,3
+ 
+-- 4. What is the most purchased item on the menu and how many times was it purchased by all customers?
+Select s.product_id ,product_name as most_purchased_item,count(s.product_id) as num_of_times_ordered
+from dannys_diner.sales s
+join dannys_diner.menu m 
+on s.product_id = m.product_id
+group by s.product_id, m.product_name
+order by 3 desc
+limit 1;
+
+-- 5. Which item was the most popular for each customer?
+with pop_item as
+(select customer_id, s.product_id, product_name ,count(s.product_id) as popular_item,
+ dense_rank() over(partition by customer_id order by count(s.product_id) desc) as rank
+ from dannys_diner.sales s
+ join dannys_diner.menu m
+ on s.product_id = m.product_id
+ group by 1,2,3
+ )
+ Select customer_id,product_name, popular_item
+ from pop_item
+ where rank =1 
+
+-- 6. Which item was purchased first by the customer after they became a member?
+with first_order as 
+(
+Select s.customer_id, s.product_id,
+order_date , join_date,
+dense_rank() over(partition by s.customer_id order by order_date) as rank
+from dannys_diner.sales s
+left join dannys_diner.members mm
+on s.customer_id = mm.customer_id
+where order_date > join_date
+)
+Select f.customer_id, f.product_id, m.product_name
+from first_order f
+join dannys_diner.menu m 
+on f.product_id = m.product_id
+where rank = 1
+order by 1 asc;
+
+-- 7. Which item was purchased just before the customer became a member?
+with cte as
+(Select s.customer_id, s.product_id,order_date, join_date,
+dense_rank() over(partition by s.customer_id order by order_date DESC) as rank
+from dannys_diner.sales s
+join dannys_diner.members mm
+on s.customer_id = mm.customer_id
+where order_date < join_date
+)
+Select s.customer_id, s.product_id, m.product_name
+from cte s
+join dannys_diner.menu m
+on s.product_id = m.product_id
+where rank = 1
+order by 1
+
+-- 8. What is the total items and amount spent for each member before they became a member?
+select s.customer_id,sum(case when product_id= 1 then 10 
+           				when product_id = 2 then 15
+           				else 12 end ) as total_price
+from dannys_diner.sales s
+join dannys_diner.members mm 
+on s.customer_id = mm.customer_id
+where order_date < join_date
+group by 1
+-- 9.  If each $1 spent equates to 10 points and sushi has a 2x points multiplier - how many points would each customer have?
+
+Select customer_id , sum(case when s.product_id = 1 then price*20
+                         else price*10 end) as total_points
+from dannys_diner.sales s
+left join dannys_diner.menu m
+on s.product_id = m.product_id
+group by 1
+order by 1 
+
+-- 10. In the first week after a customer joins the program (including their join date) they earn 2x points on all items, not just sushi - how many points do customer A and B have at the end of January?
+
+Select s.customer_id, order_date ,
+sum(case when s.product_id = 1 then price*2*10
+    when order_date >= join_date and order_date < date_add(join_date,interval 1 		WEEK) then price*2*10
+    else price*10 end) as Total_points
+from dannys_diner.sales s
+join dannys_diner.menu m 
+on s.product_id = m.product_id
+join dannys_diner.members mm
+on s.customer_id = mm.customer_id
+where order_date < '2021-01-31'
+group by 1
+order by 2 DESC; 
